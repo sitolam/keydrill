@@ -5,9 +5,11 @@
 //! a KDL feature used elsewhere in a config this does not otherwise care
 //! about.
 //!
-//! Wheel binds and the `XF86` hardware keys are skipped — a keyboard trainer
-//! cannot ask you to scroll, and nothing useful is learned by drilling the
-//! volume key.
+//! Wheel binds, the `XF86` hardware keys and `Print` are skipped — a keyboard
+//! trainer cannot ask you to scroll, and nothing useful is learned by drilling
+//! a key that is its own label. `Print` also is not a key every keyboard has:
+//! laptops that ship a Windows "snip" key emit `Super+Shift+S` in firmware and
+//! never send the keycode at all, so the card would be unanswerable.
 
 use anyhow::Result;
 use regex::Regex;
@@ -55,7 +57,6 @@ fn key_token(keysym: &str) -> Option<String> {
         "Escape" => "esc",
         "Delete" => "del",
         "Insert" => "insert",
-        "Print" => "printscreen",
         "Slash" => "/",
         "Minus" => "-",
         "Equal" => "=",
@@ -75,8 +76,8 @@ fn key_token(keysym: &str) -> Option<String> {
             if other.chars().count() == 1 || is_function {
                 return Some(lower);
             }
-            // XF86*, WheelScroll*, TouchpadScroll*: not a key you can press
-            // for a card.
+            // XF86*, WheelScroll*, TouchpadScroll*, Print: not a key worth
+            // a card. See the module comment.
             return None;
         }
     };
@@ -406,6 +407,8 @@ binds {
     Mod+T hotkey-overlay-title="Open a terminal" { spawn "ghostty"; }
     Mod+Shift+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }
     XF86AudioMute { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    Print { screenshot; }
+    Mod+Print { screenshot-screen; }
     Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
     Mod+F2 { spawn "dms" "ipc" "call" "spotlight" "toggleQuery" ":e "; }
 }
@@ -482,5 +485,7 @@ window-rule {
             .collect();
         assert!(!keys.iter().any(|k| k.contains("wheel")));
         assert!(!keys.iter().any(|k| k.contains("xf86")));
+        // Print goes too, modifiers or not: some laptops never send it.
+        assert!(!keys.iter().any(|k| k.contains("printscreen")));
     }
 }

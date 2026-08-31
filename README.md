@@ -4,27 +4,9 @@
 
 **A terminal trainer for keyboard shortcuts. You answer by pressing them.**
 
-</div>
+<img src="docs/prompt.png" alt="keydrill asking what shortcut opens the notepad" width="820">
 
-```
-╭─ keydrill niri ──────────────────────────────── 7/24 · 86% · streak 5 ─╮
-│                                                                        │
-│  ████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │
-│                                                                        │
-│                                                                        │
-│                  Send column to workspace 3, staying put               │
-│                                                                        │
-│                                Workspaces                              │
-│                                                                        │
-│              ╭──────╮   ╭─────╮   ╭───╮                                │
-│              │ meta │ + │ alt │ + │ 3 │                                │
-│              ╰──────╯   ╰─────╯   ╰───╯                                │
-│                                                                        │
-│                                correct                                 │
-│                                                                        │
-│              F1 help   F2 hint   F5 show   F10 quit                    │
-╰────────────────────────────────────────────────────────────────────────╯
-```
+</div>
 
 ## Why
 
@@ -141,6 +123,15 @@ The hint appears *above* your own caps, which never move: your keys are drawn
 the same way and in the same place whether a hint is up or not, so you can
 watch your hands while you work the rest out.
 
+<div align="center">
+
+<img src="docs/hint.png" alt="the modifier rung of the hint, with the keys currently held drawn below it" width="820">
+
+</div>
+
+Above: the hint says the bind starts with `meta` and has one more key. Below
+it, in green, the keys actually down right now.
+
 `F5` skips the ladder and shows the whole combination — but **it does not skip
 the card**. The prompt stays up and you still have to press the keys before
 anything moves on. Reading a shortcut is not the same as having typed it, and
@@ -178,8 +169,8 @@ state file, so renaming either starts that progress over.
 
 | Source | Reads | Notes |
 | --- | --- | --- |
-| `niri` | `~/.config/niri/config.kdl` | actions become prompts; wheel binds and `XF86` keys are skipped |
-| `hyprland` | `~/.config/hypr/hyprland.conf` | resolves `$mainMod`-style variables; `bindm` (mouse) is skipped |
+| `niri` | `~/.config/niri/config.kdl` | actions become prompts; wheel binds, `XF86` keys and `Print` are skipped |
+| `hyprland` | `~/.config/hypr/hyprland.conf` | resolves `$mainMod`-style variables; `bindm` (mouse) and `print` are skipped |
 
 An action the importer has no phrasing for keeps its raw text as the prompt,
 so a gap shows up in your deck rather than going missing from it. Binds
@@ -205,6 +196,12 @@ simplification: an answer is right or wrong, because a shortcut has no
 
 State lives in `$XDG_DATA_HOME/keydrill/state.json`. It is small, readable,
 and safe to delete; that is the whole recovery story.
+
+<div align="center">
+
+<img src="docs/summary.png" alt="the end-of-session summary: first-attempt accuracy, best streak" width="820">
+
+</div>
 
 ## Design notes
 

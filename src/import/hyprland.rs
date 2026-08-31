@@ -45,7 +45,6 @@ fn key_token(key: &str) -> Option<String> {
         "prior" | "page_up" => "pageup",
         "next" | "page_down" => "pagedown",
         "delete" => "del",
-        "print" => "printscreen",
         "slash" => "/",
         "minus" => "-",
         "equal" | "plus" => "=",
@@ -53,7 +52,9 @@ fn key_token(key: &str) -> Option<String> {
         "period" => ".",
         "bracketleft" => "[",
         "bracketright" => "]",
-        "mouse_down" | "mouse_up" | "mouse:272" | "mouse:273" => return None,
+        // Same reasoning as the niri importer: dedicated hardware keys are
+        // their own label, and Print is missing entirely on some laptops.
+        "print" | "mouse_down" | "mouse_up" | "mouse:272" | "mouse:273" => return None,
         other => {
             if other.starts_with("code:") || other.starts_with("mouse") {
                 return None;
