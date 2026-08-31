@@ -68,7 +68,7 @@ fn draw_session(frame: &mut Frame, app: &App) {
             Constraint::Length(1), // progress
             Constraint::Length(1),
             Constraint::Min(3),    // prompt
-            Constraint::Length(5), // key caps, plus the holding line
+            Constraint::Length(7), // the hint caps, a gap, and your own
             Constraint::Length(2), // feedback
             Constraint::Length(1), // help
         ])
@@ -116,65 +116,49 @@ fn draw_session(frame: &mut Frame, app: &App) {
     frame.render_widget(Paragraph::new(help), rows[5]);
 }
 
-/// The cap row.
+/// The cap block: the hint on top, what you are holding underneath.
 ///
-/// With no hint up, the caps are whatever you are holding — watching them
+/// Your own keys are always drawn the same way and always in the same place,
+/// whether a hint is up or not — the row does not move, change shape, or turn
+/// into a line of text when the hint appears above it. Watching those caps
 /// light up as you reach for a combination is most of what makes this feel
-/// like practice rather than a quiz. Once a hint is up the caps show the
-/// hint, and what you are holding moves to the line underneath, because you
-/// still need to see your own hands while you work out the rest.
+/// like practice rather than a quiz, and that is exactly when you are working
+/// against a hint.
 fn draw_caps(frame: &mut Frame, area: Rect, app: &App) {
     let expected = app.expected();
-    let answer = expected.first();
+    let mut lines: Vec<Line> = Vec::new();
 
-    let mut lines = match (app.hint, answer) {
-        (Hint::None, _) | (_, None) => {
-            match (!app.held.is_empty()).then(|| Combo::new(app.held, "")) {
-                Some(held) => caps(&held, Hint::None, Style::default().fg(ACCENT)),
-                None => vec![
-                    Line::from(""),
-                    Line::from(Span::styled(
-                        "press the combination",
-                        Style::default().fg(MUTED),
-                    )),
-                ],
-            }
-        }
+    match (app.hint, expected.first()) {
+        (Hint::None, _) | (_, None) => lines.extend(blank(CAP_HEIGHT)),
         (hint, Some(answer)) => {
-            let mut lines = caps(answer, hint, Style::default().fg(Color::Yellow));
-            lines.push(Line::from(""));
-            lines.push(holding(app));
-            lines
+            lines.extend(caps(answer, hint, Style::default().fg(Color::Yellow)))
         }
-    };
+    }
 
-    // Keep the block the same height however much is in it, so the prompt
-    // above never jumps as the hint ladder grows.
-    while lines.len() < area.height as usize {
-        lines.push(Line::from(""));
+    lines.push(Line::from(""));
+
+    match (!app.held.is_empty()).then(|| Combo::new(app.held, "")) {
+        Some(held) => lines.extend(caps(&held, Hint::None, Style::default().fg(ACCENT))),
+        None => {
+            // Same three rows, so the block never changes height and nothing
+            // above it shifts.
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "press the combination",
+                Style::default().fg(MUTED),
+            )));
+            lines.push(Line::from(""));
+        }
     }
 
     frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), area);
 }
 
-/// The modifiers under your fingers right now, spelled out.
-fn holding(app: &App) -> Line<'static> {
-    let names = app.held.names();
-    if names.is_empty() {
-        return Line::from(Span::styled("holding nothing", Style::default().fg(MUTED)));
-    }
+/// Key caps are three rows tall: lid, label, base.
+const CAP_HEIGHT: usize = 3;
 
-    let mut spans = vec![Span::styled("holding  ", Style::default().fg(MUTED))];
-    for (i, name) in names.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::styled(" + ", Style::default().fg(MUTED)));
-        }
-        spans.push(Span::styled(
-            name.to_string(),
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ));
-    }
-    Line::from(spans)
+fn blank(rows: usize) -> Vec<Line<'static>> {
+    (0..rows).map(|_| Line::from("")).collect()
 }
 
 /// A combination drawn as key caps, showing as much as the hint allows:
@@ -393,29 +377,12 @@ mod tests {
     }
 
     #[test]
-    fn the_holding_line_names_what_is_under_your_fingers() {
-        let mut app = crate::app::App::new(crate::session::Session::build(
-            crate::deck::Deck {
-                name: "t".into(),
-                description: None,
-                cards: vec![crate::deck::Card {
-                    description: "Focus column left".into(),
-                    keys: vec!["meta+h".into()],
-                    category: None,
-                }],
-            },
-            &crate::store::Store::default(),
-            0,
-            None,
-            None,
-        ));
-
-        assert!(holding(&app).to_string().contains("nothing"));
-
-        app.held.insert(Mods::META);
-        app.held.insert(Mods::SHIFT);
-        let line = holding(&app).to_string();
-        assert!(line.contains("meta") && line.contains("shift"));
+    fn the_block_is_the_same_height_hint_or_not() {
+        // Otherwise the prompt above it jumps around as the ladder grows.
+        let held: Combo = "meta+shift".parse().unwrap();
+        let with_hint = caps(&held, Hint::Shape, Style::default()).len() + 1 + CAP_HEIGHT;
+        let without = blank(CAP_HEIGHT).len() + 1 + CAP_HEIGHT;
+        assert_eq!(with_hint, without);
     }
 
     #[test]

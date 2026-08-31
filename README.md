@@ -121,9 +121,11 @@ piece at a time. `F2` climbs one rung; a wrong answer climbs one too.
 ```
 
 The key itself is the last thing given up, because knowing it is a `meta+alt`
-bind is usually enough to bring the rest back. The line under the caps keeps
-showing what you are actually holding the whole time, so you can still see
-your own hands while you work the rest out.
+bind is usually enough to bring the rest back.
+
+The hint appears *above* your own caps, which never move: your keys are drawn
+the same way and in the same place whether a hint is up or not, so you can
+watch your hands while you work the rest out.
 
 `F5` skips the ladder and shows the whole combination — but **it does not skip
 the card**. The prompt stays up and you still have to press the keys before
