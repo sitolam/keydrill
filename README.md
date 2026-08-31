@@ -63,7 +63,10 @@ duration:
 - **Hyprland** — `hyprctl keyword submap drill` with an empty submap, then
   `hyprctl keyword submap reset`.
 
-`keydrill doctor` reports what your terminal can do and reminds you of this.
+`keydrill doctor` reports what your terminal can do and then echoes every key
+as it arrives, which is how you tell the two failures apart. A combination
+that prints nothing at all — modifiers appear, the key never does — is one
+your compositor claimed before the terminal saw it.
 
 ## Install
 
@@ -100,7 +103,7 @@ keydrill run decks/vim-motions.toml
 keydrill run --from niri -c Workspaces -n 15   # one category, fifteen cards
 keydrill stats --from niri        # what is learned, due, and most forgotten
 keydrill import niri -o niri.toml # freeze a deck to a file and edit it
-keydrill doctor                   # can this terminal do it?
+keydrill doctor                   # capabilities, then echo what you press
 ```
 
 A session ends when the queue empties, or whenever you press `F10` — progress
@@ -121,7 +124,9 @@ piece at a time. `F2` climbs one rung; a wrong answer climbs one too.
 ```
 
 The key itself is the last thing given up, because knowing it is a `meta+alt`
-bind is usually enough to bring the rest back.
+bind is usually enough to bring the rest back. If you already had the
+modifiers right — a near miss, or you are holding them now — the ladder skips
+the first rung, since how many keys it has is not what you were missing.
 
 The hint appears *above* your own caps, which never move: your keys are drawn
 the same way and in the same place whether a hint is up or not, so you can

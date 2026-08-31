@@ -84,8 +84,13 @@ enum Command {
         config: Option<PathBuf>,
     },
 
-    /// Check that this terminal can report the keys keydrill needs.
-    Doctor,
+    /// Check that this terminal can report the keys keydrill needs, then
+    /// echo what actually arrives as you press.
+    Doctor {
+        /// Only print the capability report; do not wait for keys.
+        #[arg(long)]
+        no_echo: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -99,7 +104,7 @@ fn main() -> Result<()> {
         } => run(deck, from, config, limit, category),
         Command::Import { from, config, out } => import(from, config, out),
         Command::Stats { deck, from, config } => stats(deck, from, config),
-        Command::Doctor => doctor(),
+        Command::Doctor { no_echo } => doctor(no_echo),
     }
 }
 
@@ -249,7 +254,7 @@ fn stats(deck: Option<PathBuf>, from: Option<Source>, config: Option<PathBuf>) -
     Ok(())
 }
 
-fn doctor() -> Result<()> {
+fn doctor(no_echo: bool) -> Result<()> {
     let supported = app::terminal_reports_modifiers();
     let term = std::env::var("TERM").unwrap_or_else(|_| "unset".into());
     let program = std::env::var("TERM_PROGRAM").unwrap_or_else(|_| "unknown".into());
@@ -275,5 +280,14 @@ fn doctor() -> Result<()> {
          before the terminal sees them. Switch its own binds off first —\n\
          on niri, that is what practice mode does."
     );
-    Ok(())
+
+    if no_echo || !io::stdout().is_terminal() {
+        return Ok(());
+    }
+
+    // A key that never appears here is a key something upstream is eating —
+    // which is the difference between "keydrill cannot read it" and "your
+    // compositor took it", and is otherwise very hard to tell apart.
+    println!("\nPress keys to see what arrives. F10 to stop.\n");
+    app::echo_keys()
 }

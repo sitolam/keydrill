@@ -100,8 +100,29 @@ impl App {
             .unwrap_or_default()
     }
 
+    /// True when you have already shown you know the modifiers — either the
+    /// attempt you just got wrong had them right, or you are holding them.
+    fn modifiers_known(&self) -> bool {
+        let expected = self.expected();
+        let matches = |mods: Mods| expected.iter().any(|combo| combo.mods == mods);
+
+        self.last_wrong
+            .as_ref()
+            .is_some_and(|wrong| matches(wrong.mods))
+            || (!self.held.is_empty() && matches(self.held))
+    }
+
     fn raise_hint(&mut self) {
-        self.hint = self.hint.next();
+        let mut next = self.hint.next();
+
+        // "How many keys" tells you nothing once you have the modifiers
+        // right: the count is implied and the only thing still missing is
+        // the key. Skip to confirming the modifiers instead.
+        if next == Hint::Shape && self.modifiers_known() {
+            next = Hint::Modifiers;
+        }
+
+        self.hint = next;
         if self.hint.shows_answer() {
             // From here the card counts as one you did not know, whether the
             // ladder got here through misses or through F5.
@@ -257,7 +278,96 @@ fn push_enhancements() -> Result<()> {
     Ok(())
 }
 
+/// Prints every key event as it arrives, until F10.
+///
+/// This is the diagnostic for the most confusing failure there is: a
+/// combination that simply does nothing, because the compositor claimed it
+/// before the terminal ever saw it. Modifiers show up, the key never does.
+pub fn echo_keys() -> Result<()> {
+    terminal::enable_raw_mode()?;
+    let enhanced = push_enhancements().is_ok();
+
+    let result = (|| -> Result<()> {
+        loop {
+            let Event::Key(key) = event::read()? else {
+                continue;
+            };
+            if key.code == KeyCode::F(10) {
+                return Ok(());
+            }
+            if key.kind == KeyEventKind::Release {
+                continue;
+            }
+
+            match Combo::from_event(key) {
+                Some(combo) => println!("{combo:<24} {:?}\r", key.code),
+                None => println!("{:<24} {:?}\r", "(modifier)", key.code),
+            }
+        }
+    })();
+
+    if enhanced {
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+    }
+    terminal::disable_raw_mode()?;
+    result
+}
+
 /// True when the terminal supports the protocol keydrill needs.
 pub fn terminal_reports_modifiers() -> bool {
     terminal::supports_keyboard_enhancement().unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deck::{Card, Deck};
+    use crate::store::Store;
+
+    fn app() -> App {
+        let deck = Deck {
+            name: "t".into(),
+            description: None,
+            cards: vec![Card {
+                description: "Move the workspace itself to index 4".into(),
+                keys: vec!["meta+ctrl+4".into()],
+                category: None,
+            }],
+        };
+        App::new(Session::build(deck, &Store::default(), 0, None, None))
+    }
+
+    #[test]
+    fn the_ladder_starts_at_the_shape() {
+        let mut app = app();
+        app.raise_hint();
+        assert_eq!(app.hint, Hint::Shape);
+    }
+
+    #[test]
+    fn a_near_miss_skips_the_shape_rung() {
+        // Right modifiers, wrong key: how many keys it has is not the thing
+        // you are missing.
+        let mut app = app();
+        app.last_wrong = Some("meta+ctrl+5".parse().unwrap());
+        app.raise_hint();
+        assert_eq!(app.hint, Hint::Modifiers);
+    }
+
+    #[test]
+    fn holding_the_right_modifiers_skips_the_shape_rung_too() {
+        let mut app = app();
+        app.held.insert(Mods::META);
+        app.held.insert(Mods::CTRL);
+        app.raise_hint();
+        assert_eq!(app.hint, Hint::Modifiers);
+    }
+
+    #[test]
+    fn a_wrong_modifier_still_starts_at_the_shape() {
+        let mut app = app();
+        app.last_wrong = Some("meta+alt+4".parse().unwrap());
+        app.raise_hint();
+        assert_eq!(app.hint, Hint::Shape);
+    }
 }
