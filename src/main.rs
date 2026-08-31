@@ -254,6 +254,37 @@ fn stats(deck: Option<PathBuf>, from: Option<Source>, config: Option<PathBuf>) -
     Ok(())
 }
 
+/// Which compositor is holding the keyboard, and how to make it let go.
+///
+/// Detected from the environment rather than by asking: neither niri nor
+/// Hyprland will tell you over IPC which config it currently has loaded, so
+/// there is nothing to query.
+fn compositor() -> Option<(&'static str, &'static str)> {
+    if std::env::var_os("NIRI_SOCKET").is_some() {
+        return Some((
+            "niri",
+            "Drill inside practice mode, which loads a config with no binds:\n\
+             `practice-mode run keydrill doctor` if you have sitolamix, or\n\
+             `niri msg action load-config-file --path <a binds-free config>`.",
+        ));
+    }
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
+        return Some((
+            "Hyprland",
+            "Park its binds in an empty submap first:\n\
+             `hyprctl keyword submap drill`, and `hyprctl keyword submap reset` after.",
+        ));
+    }
+    if std::env::var_os("SWAYSOCK").is_some() {
+        return Some((
+            "sway",
+            "Park its binds in an empty mode first:\n\
+             `swaymsg mode drill`, and `swaymsg mode default` after.",
+        ));
+    }
+    None
+}
+
 fn doctor(no_echo: bool) -> Result<()> {
     let supported = app::terminal_reports_modifiers();
     let term = std::env::var("TERM").unwrap_or_else(|_| "unset".into());
@@ -275,11 +306,20 @@ fn doctor(no_echo: bool) -> Result<()> {
         );
     }
 
-    println!(
-        "\nIf your compositor binds the keys you are drilling, it takes them\n\
-         before the terminal sees them. Switch its own binds off first —\n\
-         on niri, that is what practice mode does."
-    );
+    match compositor() {
+        Some((name, hint)) => println!(
+            "\ncompositor    {name}\n\n\
+             Its keybinds are live in this window unless you have switched\n\
+             them off, and anything it binds is taken before the terminal\n\
+             sees it — the modifiers will show up below and the key will not.\n\
+             {hint}"
+        ),
+        None => println!(
+            "\nIf your compositor binds the keys you are drilling, it takes\n\
+             them before the terminal sees them: the modifiers show up below\n\
+             and the key does not. Switch its own binds off first."
+        ),
+    }
 
     if no_echo || !io::stdout().is_terminal() {
         return Ok(());

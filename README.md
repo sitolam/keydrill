@@ -63,10 +63,13 @@ duration:
 - **Hyprland** — `hyprctl keyword submap drill` with an empty submap, then
   `hyprctl keyword submap reset`.
 
-`keydrill doctor` reports what your terminal can do and then echoes every key
-as it arrives, which is how you tell the two failures apart. A combination
-that prints nothing at all — modifiers appear, the key never does — is one
-your compositor claimed before the terminal saw it.
+`keydrill doctor` reports what your terminal can do, names the compositor
+holding the keyboard, and then echoes every key as it arrives — which is how
+you tell the two failures apart. A combination that prints nothing at all —
+modifiers appear, the key never does — is one your compositor claimed before
+the terminal saw it. Run the doctor itself with the binds off
+(`practice-mode run keydrill doctor`) or it will report that about its own
+test.
 
 ## Install
 
