@@ -18,34 +18,94 @@ use crate::store::Store;
 /// that it never gates the next answer — input during the flash still counts.
 const FLASH: Duration = Duration::from_millis(320);
 
-pub enum Feedback {
-    Correct,
-    Wrong {
-        /// `None` when the card was skipped rather than missed.
-        pressed: Option<Combo>,
-        expected: Vec<Combo>,
-    },
-    Help,
+/// How much of the answer is on screen.
+///
+/// A miss climbs one rung rather than handing the answer over, so the next
+/// attempt is made against a bigger hint instead of a solved card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Hint {
+    /// Nothing shown; the cap row follows what you are holding.
+    None,
+    /// How many keys the combination has.
+    Shape,
+    /// The modifiers, with the key still blank.
+    Modifiers,
+    /// All of it. From here the card only advances when you press it.
+    Answer,
+}
+
+impl Hint {
+    fn next(self) -> Hint {
+        match self {
+            Hint::None => Hint::Shape,
+            Hint::Shape => Hint::Modifiers,
+            Hint::Modifiers | Hint::Answer => Hint::Answer,
+        }
+    }
+
+    pub fn shows_answer(self) -> bool {
+        self == Hint::Answer
+    }
 }
 
 pub struct App {
     pub session: Session,
-    pub feedback: Option<Feedback>,
     /// Modifiers currently held down, for the live key-cap row. Only
     /// populated when the terminal reports modifier keys of its own accord.
     pub held: Mods,
+    pub hint: Hint,
+    /// What you last got wrong on this card, so the screen can say so.
+    pub last_wrong: Option<Combo>,
+    pub correct: bool,
+    pub help: bool,
+    /// The card the hint belongs to, so a new card starts unhinted.
+    card: Option<String>,
     flash_since: Option<Instant>,
     quit: bool,
 }
 
 impl App {
     pub fn new(session: Session) -> App {
-        App {
+        let mut app = App {
             session,
-            feedback: None,
             held: Mods::empty(),
+            hint: Hint::None,
+            last_wrong: None,
+            correct: false,
+            help: false,
+            card: None,
             flash_since: None,
             quit: false,
+        };
+        app.sync_card();
+        app
+    }
+
+    /// Clears per-card state whenever the card in front changes.
+    fn sync_card(&mut self) {
+        let current = self.session.current().map(|c| c.description.clone());
+        if current != self.card {
+            self.card = current;
+            self.hint = Hint::None;
+            self.last_wrong = None;
+        }
+    }
+
+    /// The combinations the current card accepts. The hint row shows the
+    /// first; any of them still answers it.
+    pub fn expected(&self) -> Vec<crate::keys::Combo> {
+        self.session
+            .current()
+            .map(|card| card.combos())
+            .unwrap_or_default()
+    }
+
+    fn raise_hint(&mut self) {
+        self.hint = self.hint.next();
+        if self.hint.shows_answer() {
+            // From here the card counts as one you did not know, whether the
+            // ladder got here through misses or through F5.
+            self.session.reveal(Self::now());
         }
     }
 
@@ -80,21 +140,23 @@ impl App {
                 return;
             }
             KeyCode::F(1) => {
-                self.feedback = Some(Feedback::Help);
+                self.help = !self.help;
+                self.correct = false;
+                self.flash_since = None;
+                return;
+            }
+            KeyCode::F(2) => {
+                self.raise_hint();
+                self.correct = false;
                 self.flash_since = None;
                 return;
             }
             KeyCode::F(5) => {
-                let expected = self
-                    .session
-                    .current()
-                    .map(|card| card.combos())
-                    .unwrap_or_default();
-                self.session.skip(Self::now());
-                self.feedback = Some(Feedback::Wrong {
-                    pressed: None,
-                    expected,
-                });
+                // Skip shows the answer, but it does not move on: the card
+                // stays up, description and all, until you have pressed it.
+                self.hint = Hint::Modifiers;
+                self.raise_hint();
+                self.correct = false;
                 self.flash_since = None;
                 return;
             }
@@ -110,17 +172,23 @@ impl App {
             return;
         }
 
+        self.help = false;
         match self.session.answer(&pressed, Self::now()) {
             Answer::Correct => {
-                self.feedback = Some(Feedback::Correct);
+                self.correct = true;
+                self.last_wrong = None;
                 self.flash_since = Some(Instant::now());
+                self.sync_card();
             }
-            Answer::Wrong { expected } => {
-                self.feedback = Some(Feedback::Wrong {
-                    pressed: Some(pressed),
-                    expected,
-                });
+            Answer::Wrong { .. } => {
+                self.correct = false;
+                self.last_wrong = Some(pressed);
                 self.flash_since = None;
+                // Already showing the answer: no further rung to climb, you
+                // simply have to press it.
+                if !self.hint.shows_answer() {
+                    self.raise_hint();
+                }
             }
         }
     }
@@ -166,7 +234,7 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<
         if let Some(since) = app.flash_since {
             if since.elapsed() >= FLASH {
                 app.flash_since = None;
-                app.feedback = None;
+                app.correct = false;
             }
         }
     }

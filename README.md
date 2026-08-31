@@ -22,7 +22,7 @@
 │                                                                        │
 │                                correct                                 │
 │                                                                        │
-│                    F1 help   F5 skip   F10 quit                        │
+│              F1 help   F2 hint   F5 show   F10 quit                    │
 ╰────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -32,10 +32,10 @@ Flashcards teach you that `meta+alt+3` sends a column to workspace three.
 They do not teach your left thumb where Super is. The difference matters,
 because the thing you want back is a reflex, not a fact.
 
-So keydrill asks the question and waits for the keys. Press the wrong ones
-and it shows you the right ones, then asks again a few cards later. Cards you
-keep missing come back sooner; cards you have owned for weeks stay out of the
-way.
+So keydrill asks the question and waits for the keys. Get it wrong and it
+does not hand the answer over — it tells you the combination has three keys,
+and lets you try again. Cards you keep missing come back sooner; cards you
+have owned for weeks stay out of the way.
 
 The tools that already do this — KeyCombiner, ShortcutFoo — are closed and
 hosted. keydrill is neither, and it reads the config file you actually run,
@@ -108,6 +108,31 @@ is saved either way. The controls are function keys on purpose: `Esc`, `q`
 and `Ctrl+C` are all plausible cards, and a trainer that quits when you
 answer correctly would be a poor one.
 
+## Hints
+
+Being shown the answer teaches you almost nothing, so keydrill gives it up a
+piece at a time. `F2` climbs one rung; a wrong answer climbs one too.
+
+```text
+╭───╮   ╭───╮        ╭──────╮   ╭───╮        ╭──────╮   ╭─────╮   ╭───╮
+│ ▢ │ + │ ▢ │        │ meta │ + │ ▢ │        │ meta │ + │ alt │ + │ 3 │
+╰───╯   ╰───╯        ╰──────╯   ╰───╯        ╰──────╯   ╰─────╯   ╰───╯
+   how many              which modifiers               all of it
+```
+
+The key itself is the last thing given up, because knowing it is a `meta+alt`
+bind is usually enough to bring the rest back.
+
+`F5` skips the ladder and shows the whole combination — but **it does not skip
+the card**. The prompt stays up and you still have to press the keys before
+anything moves on. Reading a shortcut is not the same as having typed it, and
+a skip that let you walk away would be a way of never learning the thing you
+found hard.
+
+Either way the card is marked as one you did not know: it counts against
+first-attempt accuracy, lands in the weak spots, and comes back once more
+before the session ends.
+
 ## Decks
 
 A deck is TOML, meant to be as easy to write by hand as it is to generate:
@@ -154,8 +179,8 @@ simplification: an answer is right or wrong, because a shortcut has no
   its ease.
 - First correct answer: due tomorrow. Second: in three days. After that the
   interval multiplies by the card's ease, capped at a year.
-- Only your **first** attempt at a card counts. Getting it right after being
-  shown the answer is not knowing it, and the score says so.
+- Only your **first** attempt at a card counts. Getting it right after a hint
+  is not knowing it, and the score says so.
 - Forgetting a card you had learned is a *lapse*; `keydrill stats` ranks your
   weak spots by it. Missing a brand-new card is not a lapse — you cannot
   forget what you never knew.

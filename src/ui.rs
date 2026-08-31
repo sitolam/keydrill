@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Gauge, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::{App, Feedback};
+use crate::app::{App, Hint};
 use crate::keys::Combo;
 
 const ACCENT: Color = Color::Cyan;
@@ -105,8 +105,10 @@ fn draw_session(frame: &mut Frame, app: &App) {
     let help = Line::from(vec![
         Span::styled("F1", Style::default().fg(ACCENT)),
         Span::styled(" help   ", Style::default().fg(MUTED)),
+        Span::styled("F2", Style::default().fg(ACCENT)),
+        Span::styled(" hint   ", Style::default().fg(MUTED)),
         Span::styled("F5", Style::default().fg(ACCENT)),
-        Span::styled(" skip   ", Style::default().fg(MUTED)),
+        Span::styled(" show   ", Style::default().fg(MUTED)),
         Span::styled("F10", Style::default().fg(ACCENT)),
         Span::styled(" quit", Style::default().fg(MUTED)),
     ])
@@ -114,17 +116,31 @@ fn draw_session(frame: &mut Frame, app: &App) {
     frame.render_widget(Paragraph::new(help), rows[5]);
 }
 
-/// The live row: what you are holding, or what the card wanted once you have
-/// missed it. Watching the caps light up as you reach for a combination is
-/// most of what makes this feel like practice rather than a quiz.
+/// The cap row: what you are holding, or as much of the answer as the hint
+/// ladder has given up.
+///
+/// Watching the caps light up as you reach for a combination is most of what
+/// makes this feel like practice rather than a quiz, so the row is never
+/// empty for long.
 fn draw_caps(frame: &mut Frame, area: Rect, app: &App) {
-    let (combo, style) = match &app.feedback {
-        Some(Feedback::Wrong { expected, .. }) => {
-            (expected.first().cloned(), Style::default().fg(Color::Red))
-        }
-        _ => (
+    let expected = app.expected();
+    let answer = expected.first();
+
+    let (combo, hint, style) = match (app.hint, answer) {
+        (Hint::None, _) | (_, None) => (
             (!app.held.is_empty()).then(|| Combo::new(app.held, "")),
+            Hint::None,
             Style::default().fg(ACCENT),
+        ),
+        (Hint::Answer, Some(answer)) => (
+            Some(answer.clone()),
+            Hint::Answer,
+            Style::default().fg(Color::Yellow),
+        ),
+        (level, Some(answer)) => (
+            Some(answer.clone()),
+            level,
+            Style::default().fg(Color::Yellow),
         ),
     };
 
@@ -139,23 +155,43 @@ fn draw_caps(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     frame.render_widget(
-        Paragraph::new(caps(&combo, style)).alignment(Alignment::Center),
+        Paragraph::new(caps(&combo, hint, style)).alignment(Alignment::Center),
         area,
     );
 }
 
-/// A combination drawn as key caps:
+/// A combination drawn as key caps, showing as much as the hint allows:
 ///
 /// ```text
-/// ╭──────╮   ╭───╮
-/// │ meta │ + │ h │
-/// ╰──────╯   ╰───╯
+/// ╭───╮   ╭───╮        ╭──────╮   ╭───╮        ╭──────╮   ╭───╮
+/// │ ▢ │ + │ ▢ │        │ meta │ + │ ▢ │        │ meta │ + │ h │
+/// ╰───╯   ╰───╯        ╰──────╯   ╰───╯        ╰──────╯   ╰───╯
+///     shape              modifiers                 answer
 /// ```
-pub fn caps(combo: &Combo, style: Style) -> Vec<Line<'static>> {
-    let mut labels: Vec<String> = combo.mods.names().iter().map(|s| s.to_string()).collect();
+pub fn caps(combo: &Combo, hint: Hint, style: Style) -> Vec<Line<'static>> {
+    let blank = "▢".to_string();
+
+    let mut labels: Vec<String> = combo
+        .mods
+        .names()
+        .iter()
+        .map(|name| match hint {
+            // At the first rung the shape is the hint: how many keys, and
+            // nothing about which.
+            Hint::Shape => blank.clone(),
+            _ => name.to_string(),
+        })
+        .collect();
+
     if !combo.key.is_empty() {
-        labels.push(combo.key.clone());
+        labels.push(match hint {
+            Hint::None | Hint::Answer => combo.key.clone(),
+            // The key itself is the last thing given up: knowing it is meta
+            // and alt is usually enough to remember the rest.
+            Hint::Shape | Hint::Modifiers => blank,
+        });
     }
+
     if labels.is_empty() {
         return vec![Line::from("")];
     }
@@ -178,35 +214,51 @@ pub fn caps(combo: &Combo, style: Style) -> Vec<Line<'static>> {
 }
 
 fn draw_feedback(frame: &mut Frame, area: Rect, app: &App) {
-    let line = match &app.feedback {
-        Some(Feedback::Correct) => Line::from(Span::styled(
+    let muted = Style::default().fg(MUTED);
+
+    let line = if app.help {
+        Line::from(Span::styled(
+            "press the shortcut this describes. F2 gives a hint, one step at a time.",
+            muted,
+        ))
+    } else if app.correct {
+        Line::from(Span::styled(
             "correct",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
-        )),
-        Some(Feedback::Wrong { pressed, expected }) => {
-            let alternatives: Vec<String> = expected.iter().map(Combo::to_string).collect();
-            Line::from(vec![
-                Span::styled(
-                    match pressed {
-                        Some(pressed) => format!("you pressed {pressed}"),
-                        None => "skipped".to_string(),
-                    },
-                    Style::default().fg(Color::Red),
-                ),
-                Span::styled("   ·   ", Style::default().fg(MUTED)),
-                Span::styled(
-                    alternatives.join(" or "),
-                    Style::default().fg(Color::Yellow),
-                ),
-            ])
+        ))
+    } else {
+        let mut spans = Vec::new();
+        if let Some(pressed) = &app.last_wrong {
+            spans.push(Span::styled(
+                format!("you pressed {pressed}"),
+                Style::default().fg(Color::Red),
+            ));
         }
-        Some(Feedback::Help) => Line::from(Span::styled(
-            "press the shortcut this describes. F5 skips, F10 quits and saves.",
-            Style::default().fg(MUTED),
-        )),
-        None => Line::from(""),
+
+        let note = match app.hint {
+            Hint::None => "",
+            Hint::Shape => "that many keys",
+            Hint::Modifiers => "these modifiers",
+            // The card does not move on until it has actually been pressed —
+            // reading the answer is not the same as having typed it.
+            Hint::Answer => "now press it",
+        };
+        if !note.is_empty() {
+            if !spans.is_empty() {
+                spans.push(Span::styled("   ·   ", muted));
+            }
+            spans.push(Span::styled(note, Style::default().fg(Color::Yellow)));
+        }
+
+        let alternatives = app.expected();
+        if app.hint.shows_answer() && alternatives.len() > 1 {
+            let rest: Vec<String> = alternatives.iter().skip(1).map(Combo::to_string).collect();
+            spans.push(Span::styled(format!("   or {}", rest.join(" or ")), muted));
+        }
+
+        Line::from(spans)
     };
 
     frame.render_widget(Paragraph::new(line).alignment(Alignment::Center), area);
@@ -287,17 +339,46 @@ mod tests {
     use super::*;
     use crate::keys::Mods;
 
+    fn row(combo: &str, hint: Hint) -> String {
+        let combo: Combo = combo.parse().unwrap();
+        caps(&combo, hint, Style::default())[1].to_string()
+    }
+
     #[test]
     fn caps_draw_three_lines_whatever_the_combination() {
         let combo: Combo = "meta+shift+h".parse().unwrap();
-        assert_eq!(caps(&combo, Style::default()).len(), 3);
+        assert_eq!(caps(&combo, Hint::None, Style::default()).len(), 3);
     }
 
     #[test]
     fn caps_of_bare_modifiers_omit_the_empty_key() {
         let combo = Combo::new(Mods::META, "");
-        let middle = &caps(&combo, Style::default())[1];
+        let middle = &caps(&combo, Hint::None, Style::default())[1];
         assert!(middle.to_string().contains("meta"));
         assert!(!middle.to_string().contains("││"));
+    }
+
+    #[test]
+    fn the_shape_rung_gives_away_only_the_number_of_keys() {
+        let shape = row("meta+alt+3", Hint::Shape);
+        assert_eq!(shape.matches('▢').count(), 3);
+        assert!(!shape.contains("meta"));
+        assert!(!shape.contains('3'));
+    }
+
+    #[test]
+    fn the_modifier_rung_still_hides_the_key() {
+        let modifiers = row("meta+alt+3", Hint::Modifiers);
+        assert!(modifiers.contains("meta"));
+        assert!(modifiers.contains("alt"));
+        assert!(!modifiers.contains('3'));
+        assert_eq!(modifiers.matches('▢').count(), 1);
+    }
+
+    #[test]
+    fn the_answer_rung_shows_everything() {
+        let answer = row("meta+alt+3", Hint::Answer);
+        assert!(answer.contains("meta") && answer.contains("alt") && answer.contains('3'));
+        assert!(!answer.contains('▢'));
     }
 }

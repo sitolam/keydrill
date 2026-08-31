@@ -13,9 +13,15 @@ use crate::keys::Combo;
 use crate::sched::{review, CardState};
 use crate::store::Store;
 
-/// How far back a missed card goes. Far enough that you cannot answer from
-/// short-term memory, close enough to still be in this session.
+/// How far back a card you did not know goes once you have finally pressed
+/// it. Far enough that you cannot answer from short-term memory, close
+/// enough to still be in this session.
 const REQUEUE_DISTANCE: usize = 4;
+
+/// How many times one card may come back within a session. Without a cap, a
+/// card you keep missing would circle forever and the session would never
+/// end.
+const MAX_REQUEUES: u8 = 1;
 
 #[derive(Debug, PartialEq)]
 pub enum Answer {
@@ -35,6 +41,7 @@ pub struct Session {
     /// spots and the reason accuracy is scored on first attempts.
     missed: Vec<usize>,
     seen: Vec<usize>,
+    requeues: Vec<(usize, u8)>,
     pub answered: usize,
     pub correct: usize,
     pub streak: usize,
@@ -94,6 +101,7 @@ impl Session {
             queue: order.into(),
             missed: Vec::new(),
             seen: Vec::new(),
+            requeues: Vec::new(),
             answered: 0,
             correct: 0,
             streak: 0,
@@ -136,6 +144,9 @@ impl Session {
         self.missed.iter().map(|&i| &self.deck.cards[i]).collect()
     }
 
+    /// A wrong answer leaves the card exactly where it is. That is the
+    /// point of the hint ladder: you are meant to try again against a bigger
+    /// hint, not to have the card whisked away and the answer handed over.
     pub fn answer(&mut self, pressed: &Combo, now: i64) -> Answer {
         let Some(&index) = self.queue.front() else {
             return Answer::Correct;
@@ -144,51 +155,74 @@ impl Session {
         let correct = card.accepts(pressed);
 
         self.answered += 1;
-        if !self.seen.contains(&index) {
-            self.seen.push(index);
-        }
+        self.mark_seen(index);
 
-        // A card's scheduling is only updated on its first attempt. Otherwise
-        // the retry after seeing the answer would overwrite the fact that you
-        // did not know it.
-        let first_attempt = !self.missed.contains(&index);
-        if first_attempt {
+        // Scheduling is decided by the first attempt only. Otherwise the
+        // retry after a hint would overwrite the fact that you needed one.
+        if !self.missed.contains(&index) {
             self.states[index] = review(self.states[index], correct, now);
         }
 
-        if correct {
-            self.correct += 1;
-            self.streak += 1;
-            self.best_streak = self.best_streak.max(self.streak);
-            self.queue.pop_front();
-            Answer::Correct
-        } else {
+        if !correct {
             self.streak = 0;
             if !self.missed.contains(&index) {
                 self.missed.push(index);
             }
-            self.requeue();
-            Answer::Wrong {
+            return Answer::Wrong {
                 expected: self.deck.cards[index].combos(),
-            }
+            };
         }
+
+        self.correct += 1;
+        self.streak += 1;
+        self.best_streak = self.best_streak.max(self.streak);
+
+        // A card you got right first time is done. One you had to be shown
+        // comes back later in the session, so that pressing it once with the
+        // answer on screen is not the last you see of it.
+        if self.missed.contains(&index) && self.requeue_count(index) < MAX_REQUEUES {
+            self.bump_requeue(index);
+            self.requeue();
+        } else {
+            self.queue.pop_front();
+        }
+        Answer::Correct
     }
 
-    /// Skipped cards are treated as missed: pressing F5 rather than the key
-    /// is not knowing it either.
-    pub fn skip(&mut self, now: i64) {
+    /// Gives the current card up: it counts as not known from here on, and
+    /// its scheduling is set accordingly. The card stays in front — the
+    /// caller shows the answer, and you still have to press it.
+    pub fn reveal(&mut self, now: i64) {
         let Some(&index) = self.queue.front() else {
             return;
         };
-        if !self.seen.contains(&index) {
-            self.seen.push(index);
-        }
+        self.mark_seen(index);
         if !self.missed.contains(&index) {
             self.missed.push(index);
             self.states[index] = review(self.states[index], false, now);
         }
         self.streak = 0;
-        self.requeue();
+    }
+
+    fn mark_seen(&mut self, index: usize) {
+        if !self.seen.contains(&index) {
+            self.seen.push(index);
+        }
+    }
+
+    fn requeue_count(&self, index: usize) -> u8 {
+        self.requeues
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map(|(_, n)| *n)
+            .unwrap_or(0)
+    }
+
+    fn bump_requeue(&mut self, index: usize) {
+        match self.requeues.iter_mut().find(|(i, _)| *i == index) {
+            Some((_, n)) => *n += 1,
+            None => self.requeues.push((index, 1)),
+        }
     }
 
     fn requeue(&mut self) {
@@ -272,16 +306,52 @@ mod tests {
     }
 
     #[test]
-    fn a_wrong_answer_comes_back_later_in_the_same_session() {
+    fn a_wrong_answer_leaves_the_card_in_front_to_try_again() {
         let mut session = Session::build(deck(6), &Store::default(), NOW, None, None);
-        let missed = session.current().unwrap().description.clone();
+        let asked = session.current().unwrap().description.clone();
 
         let answer = session.answer(&"ctrl+z".parse().unwrap(), NOW);
         assert!(matches!(answer, Answer::Wrong { .. }));
 
         assert_eq!(session.remaining(), 6, "the card is still owed");
-        assert_ne!(session.current().unwrap().description, missed);
+        assert_eq!(
+            session.current().unwrap().description,
+            asked,
+            "the card stays up so the next hint applies to it"
+        );
         assert_eq!(session.streak, 0);
+    }
+
+    #[test]
+    fn a_card_you_had_to_be_shown_comes_back_once() {
+        let mut session = Session::build(deck(6), &Store::default(), NOW, None, None);
+        let shown = session.current().unwrap().description.clone();
+
+        session.reveal(NOW);
+        assert_eq!(
+            session.current().unwrap().description,
+            shown,
+            "revealing does not move the card; you still have to press it"
+        );
+
+        answer_current_correctly(&mut session);
+        assert_ne!(session.current().unwrap().description, shown);
+        assert_eq!(session.remaining(), 6, "it is queued again, not retired");
+    }
+
+    #[test]
+    fn a_card_cannot_circle_for_ever() {
+        // Miss it, be shown it, press it, meet it again, miss it again: the
+        // session still has to end.
+        let mut session = Session::build(deck(1), &Store::default(), NOW, None, None);
+        for _ in 0..10 {
+            if session.is_finished() {
+                break;
+            }
+            session.reveal(NOW);
+            answer_current_correctly(&mut session);
+        }
+        assert!(session.is_finished());
     }
 
     #[test]
@@ -310,11 +380,12 @@ mod tests {
     }
 
     #[test]
-    fn skipping_counts_as_not_knowing_it() {
+    fn being_shown_a_card_counts_as_not_knowing_it() {
         let mut session = Session::build(deck(3), &Store::default(), NOW, None, None);
-        session.skip(NOW);
+        session.reveal(NOW);
         assert_eq!(session.weak_spots().len(), 1);
         assert_eq!(session.remaining(), 3);
+        assert_eq!(session.accuracy(), 0.0);
     }
 
     #[test]
