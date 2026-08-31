@@ -71,6 +71,12 @@ the terminal saw it. Run the doctor itself with the binds off
 (`practice-mode run keydrill doctor`) or it will report that about its own
 test.
 
+If one specific three-key combination never arrives while its neighbours do,
+suspect the keyboard rather than the software: laptop matrices routinely
+refuse to report certain three-key combinations at once. Press the two halves
+separately — if both arrive and the whole does not, nothing in software can
+recover it.
+
 ## Install
 
 **Nix, without installing anything:**

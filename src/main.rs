@@ -328,6 +328,13 @@ fn doctor(no_echo: bool) -> Result<()> {
     // A key that never appears here is a key something upstream is eating —
     // which is the difference between "keydrill cannot read it" and "your
     // compositor took it", and is otherwise very hard to tell apart.
-    println!("\nPress keys to see what arrives. F10 to stop.\n");
+    println!(
+        "\nPress keys to see what arrives. F10 to stop.\n\n\
+         If one particular three-key combination never appears while its\n\
+         neighbours do — Win+Ctrl+4 missing but Win+Ctrl+5 fine — try its\n\
+         two halves on their own. If both halves arrive and the whole does\n\
+         not, the keyboard is refusing to report those three keys at once,\n\
+         and no amount of software will change that.\n"
+    );
     app::echo_keys()
 }
