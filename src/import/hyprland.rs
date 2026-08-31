@@ -11,8 +11,21 @@ use std::collections::HashMap;
 use anyhow::Result;
 use regex::Regex;
 
+use std::path::Path;
+
 use crate::deck::Deck;
-use crate::import::merge;
+use crate::import::{expand, merge};
+
+/// Hyprland's `source = ~/.config/hypr/binds.conf`. Nearly every config of
+/// any size splits its binds out this way.
+fn source(line: &str) -> Option<String> {
+    let (key, value) = line.split_once('=')?;
+    (key.trim() == "source").then(|| value.trim().to_string())
+}
+
+pub fn read(path: &Path) -> anyhow::Result<String> {
+    expand(path, source, 0)
+}
 
 fn modifier_token(name: &str) -> Option<&'static str> {
     Some(match name.to_uppercase().as_str() {

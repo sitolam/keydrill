@@ -120,8 +120,7 @@ fn load_deck(deck: Option<PathBuf>, from: Option<Source>, config: Option<PathBuf
                 Some(path) => path,
                 None => source.default_path()?,
             };
-            let text = std::fs::read_to_string(&path)
-                .with_context(|| format!("cannot read {}", path.display()))?;
+            let text = source.read(&path)?;
             source
                 .parse(&text)
                 .with_context(|| format!("cannot import {}", path.display()))

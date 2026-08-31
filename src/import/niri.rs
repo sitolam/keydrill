@@ -12,8 +12,26 @@
 use anyhow::Result;
 use regex::Regex;
 
+use std::path::Path;
+
 use crate::deck::Deck;
-use crate::import::merge;
+use crate::import::{expand, merge};
+
+/// niri's `include` directive: `include optional=true "hm.kdl"`.
+///
+/// A config that is nothing but includes is the normal case rather than an
+/// exotic one — DankMaterialShell installs exactly that, with the binds a
+/// file away.
+fn include(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("include")?;
+    let quoted = rest.split_once('"')?.1;
+    let path = quoted.rsplit_once('"')?.0;
+    Some(path.to_string())
+}
+
+pub fn read(path: &Path) -> anyhow::Result<String> {
+    expand(path, include, 0)
+}
 
 /// niri keysym -> the token a deck uses.
 fn key_token(keysym: &str) -> Option<String> {
