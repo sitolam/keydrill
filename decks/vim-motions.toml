@@ -1,0 +1,43 @@
+# A hand-written deck, to show the format. Importers emit the same thing.
+name = "vim-motions"
+description = "Movement in normal mode"
+
+[[card]]
+description = "Start of the next word"
+keys = ["w"]
+category = "Motions"
+
+[[card]]
+description = "End of the current word"
+keys = ["e"]
+category = "Motions"
+
+[[card]]
+description = "Back one word"
+keys = ["b"]
+category = "Motions"
+
+[[card]]
+description = "First non-blank of the line"
+keys = ["shift+6"]
+category = "Motions"
+
+[[card]]
+description = "End of the line"
+keys = ["shift+4"]
+category = "Motions"
+
+[[card]]
+description = "Top of the file"
+keys = ["g"]
+category = "Motions"
+
+[[card]]
+description = "Half a page down"
+keys = ["ctrl+d"]
+category = "Scrolling"
+
+[[card]]
+description = "Half a page up"
+keys = ["ctrl+u"]
+category = "Scrolling"
